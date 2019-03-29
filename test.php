@@ -18,6 +18,7 @@ $rc_files = array();
 $in_files = array();
 $out_files = array();
 $xml_files = array();
+$txt_files = array();
 
 // create a new html document for test.php output
 $html_doc = new DOMDocument();
@@ -117,11 +118,14 @@ function get_files($format) {
         }
         // if recursivness is enabled
         else {
-            foreach (glob($tests_dir . "/*." . $format) as $file) {
-                array_push($array, $file);
-            }
-            foreach (glob($tests_dir . "/*/*." . $format) as $file) {
-                array_push($array, $file);
+            $search = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tests_dir));
+
+            foreach ($search as $path) {
+                $filename = explode("/", $path);
+                if (preg_match($format, $filename [sizeof($filename ) - 1])) {
+                    if (!$path->isDir())
+                        $array[] = $path->getPathname();
+                }
             }
         }
     }
@@ -147,10 +151,13 @@ function get_files($format) {
 
 function run_tests($html_doc, $table) {
     global $parse_file, $int_file, $parse_only, $int_only;
-    global $src_files, $rc_files, $in_files, $out_files, $xml_files;
+    global $src_files, $rc_files, $in_files, $out_files, $xml_files, $txt_files;
 
     $return_code_parser = null;
-    $content = null;
+    $return_code_int = null;
+    $rc_content = null;
+    $out_content = null;
+    $out_actual = null;
 
     // if neither the parser nor the interpreter files exist exit
     if (!file_exists($parse_file) and !file_exists($int_file)) {
@@ -214,18 +221,12 @@ function run_tests($html_doc, $table) {
         $tr->appendChild($td);
 
         // create the fourth column of the table with expected interpreted output from .out files
-        $td = $html_doc->createElement('td', "Expected output");
+        $td = $html_doc->createElement('td', "Interpret output");
         $tdAttribute = $html_doc->createAttribute('style');
         $tdAttribute->value = 'padding-right: 10px; padding-left: 10px; border: 2px solid black; font-size: 24px; font-weight: bold; padding-top: 10px; padding-bottom: 10px;';
         $td->appendChild($tdAttribute);
         $tr->appendChild($td);
 
-        // create the fifth column of the table with the output of the interpret
-        $td = $html_doc->createElement('td', "Actual output");
-        $tdAttribute = $html_doc->createAttribute('style');
-        $tdAttribute->value = 'padding-right: 10px; padding-left: 10px; border: 2px solid black; font-size: 24px; font-weight: bold; padding-top: 10px; padding-bottom: 10px;';
-        $td->appendChild($tdAttribute);
-        $tr->appendChild($td);
     }
     else {
         // create the third column of the table with the value got after the parser is run
@@ -243,45 +244,38 @@ function run_tests($html_doc, $table) {
         $tr->appendChild($td);
 
         // create the fifth column of the table with expected interpreted output from .out files
-        $td = $html_doc->createElement('td', "Expected output");
-        $tdAttribute = $html_doc->createAttribute('style');
-        $tdAttribute->value = 'padding-right: 10px; padding-left: 10px; border: 2px solid black; font-size: 24px; font-weight: bold; padding-top: 10px; padding-bottom: 10px;';
-        $td->appendChild($tdAttribute);
-        $tr->appendChild($td);
-
-        // create the sixth column of the table with the output of the interpret
-        $td = $html_doc->createElement('td', "Actual output");
+        $td = $html_doc->createElement('td', "Interpret output");
         $tdAttribute = $html_doc->createAttribute('style');
         $tdAttribute->value = 'padding-right: 10px; padding-left: 10px; border: 2px solid black; font-size: 24px; font-weight: bold; padding-top: 10px; padding-bottom: 10px;';
         $td->appendChild($tdAttribute);
         $tr->appendChild($td);
     }
 
-    // running the parser tests
+    // running the parser and interpret tests
     foreach ($src_files as $file) {
         $src = explode("/", $file);
 
-        // if an .xml file already exists forward the parser output into it
+        // if an .xml file already exists don't forward the parser output into it
         if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
             $xml = array_values($xml);
-            exec('php ' . $parse_file . ' < ' . $file . " > " . $xml[0] . " 2> /dev/null", $output, $return_code_parser);
+            exec('php ' . $parse_file . ' < ' . $file . " 2> /dev/null", $output, $return_code_parser);
         }
-        // if an .xml find doesn't exist create one and forward the parser output into it
+        // if an .xml file doesn't exist create one and forward the parser output into it
         else {
-            exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $output, $return_code_parser);
+            exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $parse_output, $return_code_parser);
             array_push($xml_files, str_replace(".src", ".xml", $file));
         }
 
         // if the corresponding .rc file exists load the value from it
         if ($rc = preg_grep("/" . str_replace(".src", ".rc", $src[count($src) - 1]) . "/", $rc_files)) {
             $rc = array_values($rc);
-            $content = file_get_contents($rc[0], true);
+            $rc_content = file_get_contents($rc[0], true);
         }
         // if the corresponding .rc file doesn't exist, create it and put the value of 0 into it
         else {
             $filename = str_replace("src", "rc", $file);
             file_put_contents($filename, "0");
-            $content = "0";
+            $rc_content = "0";
         }
 
         // create .in file for the corresponding .src file if it doesn't exist already
@@ -291,11 +285,23 @@ function run_tests($html_doc, $table) {
             array_push($in_files, $filename, "");
         }
 
+        // if the corresponding .out file exists load the value from it
+        if ($out = preg_grep("/" . str_replace(".src", ".out", $src[count($src) - 1]) . "/", $out_files)) {
+            $out = array_values($out);
+            $out_content = file_get_contents($out[0], true);
+        }
         // create .out file for the corresponding .src file if it doesn't exist already
-        if (!$out = preg_grep("/" . str_replace(".src", ".out", $src[count($src) - 1]) . "/", $out_files)) {
+        else {
             $filename = str_replace("src", "out", $file);
             file_put_contents($filename, "");
             array_push($in_files, $filename, "");
+        }
+
+        // create .txt file for the corresponding .src file if it doesn't exist already
+        if (!$txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
+            $filename = str_replace(".src", ".txt", $file);
+            file_put_contents($filename, "");
+            array_push($txt_files, $filename, "");
         }
 
         // create a new table row for every test
@@ -310,14 +316,14 @@ function run_tests($html_doc, $table) {
         $tr->appendChild($td);
 
         // create a table cell with the expected value got from the .rc files
-        $td = $html_doc->createElement('td', $content);
+        $td = $html_doc->createElement('td', trim($rc_content));
         $tdAttribute = $html_doc->createAttribute('style');
         $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px;';
         $td->appendChild($tdAttribute);
         $tr->appendChild($td);
 
         // if the return code of parser and the value in the .rc file match
-        if ($return_code_parser == $content or $return_code_parser == "0") {
+        if ($return_code_parser == trim($rc_content) or $return_code_parser == "0") {
             $td = $html_doc->createElement('td', $return_code_parser);
             $tdAttribute = $html_doc->createAttribute('style');
             $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
@@ -332,24 +338,56 @@ function run_tests($html_doc, $table) {
             $td->appendChild($tdAttribute);
             $tr->appendChild($td);
         }
-    }
 
-    // running the interpret tests
-    foreach ($in_files as $file) {
-        $in = explode("/", $file);
-        printf($file . "\n");
-
-        // if an .xml file already exists forward the parser output into it
-        if ($xml = preg_grep("/" . str_replace(".in", ".xml", $in[count($in) - 1]) . "/", $xml_files)) {
+        // if an .xml file already exists forward it into the interpret source
+        if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
             $xml = array_values($xml);
-            printf($xml[0] . "\n");
-            exec('python3 ' . $int_file . ' --source=' . $xml[0] . " --input=" . $file . " 2> /dev/null", $output, $return_code_int);
+            // if an .in file already exists forward it into the interpret input
+            if ($in = preg_grep("/" . str_replace(".src", ".in", $src[count($src) - 1]) . "/", $in_files)) {
+                $in = array_values($in);
+            }
+            // if a .txt file already exists forward the interpret output into it
+            if ($txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
+                $txt = array_values($txt);
+            }
+            exec('python3 ' . $int_file . ' --source=' . $xml[0] . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
         }
-        // if an .xml find doesn't exist create one and forward the parser output into it
+
+        // if the corresponding .txt file exists load the value from it
+        $txt_content = file_get_contents($txt[0], true);
+
+        // if the return code of the interpret and the value in the .rc file match
+        if ($return_code_int == trim($rc_content)) {
+            $td = $html_doc->createElement('td', $return_code_int);
+            $tdAttribute = $html_doc->createAttribute('style');
+            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
+            $td->appendChild($tdAttribute);
+            $tr->appendChild($td);
+        }
+        // if the values don't match
         else {
-            printf("no");
-            //exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $output, $return_code_int);
-            //array_push($xml_files, str_replace(".src", ".xml", $file));
+            $td = $html_doc->createElement('td', $return_code_int);
+            $tdAttribute = $html_doc->createAttribute('style');
+            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
+            $td->appendChild($tdAttribute);
+            $tr->appendChild($td);
+        }
+
+        // if the actual output matches the expected output
+        if (trim($out_content) == trim($txt_content)) {
+            $td = $html_doc->createElement('td', "OUTPUT IS CORRECT");
+            $tdAttribute = $html_doc->createAttribute('style');
+            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
+            $td->appendChild($tdAttribute);
+            $tr->appendChild($td);
+        }
+        else {
+            // if the output doesn't match the expecte output
+            $td = $html_doc->createElement('td', "INCORRECT OUTPUT");
+            $tdAttribute = $html_doc->createAttribute('style');
+            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
+            $td->appendChild($tdAttribute);
+            $tr->appendChild($td);
         }
     }
 }
@@ -358,11 +396,11 @@ function run_tests($html_doc, $table) {
 parse_arguments();
 
 // function to fill the arrays with specific files for testing
-$src_files = get_files("src");
-$rc_files = get_files("rc");
-$out_files = get_files("out");
-$in_files = get_files("in");
-$xml_files = get_files("xml");
+$src_files = get_files("(\.src)");
+$rc_files = get_files("(\.rc)");
+$out_files = get_files("(\.out)");
+$in_files = get_files("(\.in)");
+$xml_files = get_files("(\.xml)");
 
 // create the head of the html document
 $head = $html_doc->createElement('head');
