@@ -255,27 +255,65 @@ function run_tests($html_doc, $table) {
     foreach ($src_files as $file) {
         $src = explode("/", $file);
 
-        // if an .xml file already exists don't forward the parser output into it
-        if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
-            $xml = array_values($xml);
-            exec('php ' . $parse_file . ' < ' . $file . " 2> /dev/null", $output, $return_code_parser);
-        }
-        // if an .xml file doesn't exist create one and forward the parser output into it
-        else {
-            exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $parse_output, $return_code_parser);
-            array_push($xml_files, str_replace(".src", ".xml", $file));
-        }
+        // create a new table row for every test
+        $tr = $html_doc->createElement('tr');
+        $table->appendChild($tr);
+
+        // create a table cell with the name of each test
+        $td = $html_doc->createElement('td', $file);
+        $tdAttribute = $html_doc->createAttribute('style');
+        $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px;';
+        $td->appendChild($tdAttribute);
+        $tr->appendChild($td);
 
         // if the corresponding .rc file exists load the value from it
         if ($rc = preg_grep("/" . str_replace(".src", ".rc", $src[count($src) - 1]) . "/", $rc_files)) {
             $rc = array_values($rc);
-            $rc_content = file_get_contents($rc[0], true);
+            $rc_content = trim(file_get_contents($rc[0], true));
         }
         // if the corresponding .rc file doesn't exist, create it and put the value of 0 into it
         else {
             $filename = str_replace("src", "rc", $file);
             file_put_contents($filename, "0");
             $rc_content = "0";
+        }
+
+        // create a table cell with the expected value got from the .rc files
+        $td = $html_doc->createElement('td', trim($rc_content));
+        $tdAttribute = $html_doc->createAttribute('style');
+        $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px;';
+        $td->appendChild($tdAttribute);
+        $tr->appendChild($td);
+
+        // if the parser should be run
+        if ($parse_only or (!$int_only and !$parse_only)) {
+            // if an .xml file already exists don't forward the parser output into it
+            if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
+                $xml = array_values($xml);
+                exec('php ' . $parse_file . ' < ' . $file . " 2> /dev/null", $output, $return_code_parser);
+            }
+            // if an .xml file doesn't exist create one and forward the parser output into it
+            else {
+                exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $parse_output, $return_code_parser);
+                array_push($xml_files, str_replace(".src", ".xml", $file));
+            }
+
+            // if the return code of parser and the value in the .rc file match
+            if ($return_code_parser == $rc_content or $return_code_parser == "0") {
+                $td = $html_doc->createElement('td', $return_code_parser);
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
+            // if the values don't match
+            else {
+                $td = $html_doc->createElement('td', $return_code_parser);
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
         }
 
         // create .in file for the corresponding .src file if it doesn't exist already
@@ -304,44 +342,24 @@ function run_tests($html_doc, $table) {
             array_push($txt_files, $filename, "");
         }
 
-        // create a new table row for every test
-        $tr = $html_doc->createElement('tr');
-        $table->appendChild($tr);
-
-        // create a table cell with the name of each test
-        $td = $html_doc->createElement('td', $file);
-        $tdAttribute = $html_doc->createAttribute('style');
-        $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px;';
-        $td->appendChild($tdAttribute);
-        $tr->appendChild($td);
-
-        // create a table cell with the expected value got from the .rc files
-        $td = $html_doc->createElement('td', trim($rc_content));
-        $tdAttribute = $html_doc->createAttribute('style');
-        $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px;';
-        $td->appendChild($tdAttribute);
-        $tr->appendChild($td);
-
-        // if the return code of parser and the value in the .rc file match
-        if ($return_code_parser == trim($rc_content) or $return_code_parser == "0") {
-            $td = $html_doc->createElement('td', $return_code_parser);
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
+        // if both the interpret and the parser should be called use .xml files for the interpret
+        if (!$int_only and !$parse_only) {
+            // if an .xml file already exists forward it into the interpret source
+            if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
+                $xml = array_values($xml);
+                // if an .in file already exists forward it into the interpret input
+                if ($in = preg_grep("/" . str_replace(".src", ".in", $src[count($src) - 1]) . "/", $in_files)) {
+                    $in = array_values($in);
+                }
+                // if a .txt file already exists forward the interpret output into it
+                if ($txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
+                    $txt = array_values($txt);
+                }
+                exec('python3 ' . $int_file . ' --source=' . $xml[0] . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
+            }
         }
-        // if the values don't match
-        else {
-            $td = $html_doc->createElement('td', $return_code_parser);
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
-        }
-
-        // if an .xml file already exists forward it into the interpret source
-        if ($xml = preg_grep("/" . str_replace(".src", ".xml", $src[count($src) - 1]) . "/", $xml_files)) {
-            $xml = array_values($xml);
+        // if only the interpret should be called use the .src files for the source
+        elseif ($int_only) {
             // if an .in file already exists forward it into the interpret input
             if ($in = preg_grep("/" . str_replace(".src", ".in", $src[count($src) - 1]) . "/", $in_files)) {
                 $in = array_values($in);
@@ -350,44 +368,46 @@ function run_tests($html_doc, $table) {
             if ($txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
                 $txt = array_values($txt);
             }
-            exec('python3 ' . $int_file . ' --source=' . $xml[0] . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
+            exec('python3 ' . $int_file . ' --source=' . $file . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
         }
 
-        // if the corresponding .txt file exists load the value from it
-        $txt_content = file_get_contents($txt[0], true);
+        if ($int_only or (!$int_only and !$parse_only)) {
+            // if the corresponding .txt file exists load the value from it
+            $txt_content = file_get_contents($txt[0], true);
 
-        // if the return code of the interpret and the value in the .rc file match
-        if ($return_code_int == trim($rc_content)) {
-            $td = $html_doc->createElement('td', $return_code_int);
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
-        }
-        // if the values don't match
-        else {
-            $td = $html_doc->createElement('td', $return_code_int);
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
-        }
+            // if the return code of the interpret and the value in the .rc file match
+            if ($return_code_int == trim($rc_content)) {
+                $td = $html_doc->createElement('td', $return_code_int);
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
+            // if the values don't match
+            else {
+                $td = $html_doc->createElement('td', $return_code_int);
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
 
-        // if the actual output matches the expected output
-        if (trim($out_content) == trim($txt_content)) {
-            $td = $html_doc->createElement('td', "OUTPUT IS CORRECT");
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
-        }
-        else {
-            // if the output doesn't match the expecte output
-            $td = $html_doc->createElement('td', "INCORRECT OUTPUT");
-            $tdAttribute = $html_doc->createAttribute('style');
-            $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
-            $td->appendChild($tdAttribute);
-            $tr->appendChild($td);
+            // if the actual output matches the expected output
+            if (trim($out_content) == trim($txt_content)) {
+                $td = $html_doc->createElement('td', "OUTPUT IS CORRECT");
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #5bff14;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
+            else {
+                // if the output doesn't match the expecte output
+                $td = $html_doc->createElement('td', "INCORRECT OUTPUT");
+                $tdAttribute = $html_doc->createAttribute('style');
+                $tdAttribute->value = 'border: 2px solid black; padding-top: 10px; padding-bottom: 10px; background-color: #ff0900;';
+                $td->appendChild($tdAttribute);
+                $tr->appendChild($td);
+            }
         }
     }
 }
