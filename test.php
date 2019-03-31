@@ -270,6 +270,9 @@ function run_tests($html_doc, $table) {
         if ($rc = preg_grep("/" . str_replace(".src", ".rc", $src[count($src) - 1]) . "/", $rc_files)) {
             $rc = array_values($rc);
             $rc_content = trim(file_get_contents($rc[0], true));
+            if (($key = array_search($rc[0], $rc_files)) !== false) {
+                unset($rc_files[$key]);
+            }
         }
         // if the corresponding .rc file doesn't exist, create it and put the value of 0 into it
         else {
@@ -327,6 +330,9 @@ function run_tests($html_doc, $table) {
         if ($out = preg_grep("/" . str_replace(".src", ".out", $src[count($src) - 1]) . "/", $out_files)) {
             $out = array_values($out);
             $out_content = file_get_contents($out[0], true);
+            if (($key = array_search($out[0], $out_files)) !== false) {
+                unset($out_files[$key]);
+            }
         }
         // create .out file for the corresponding .src file if it doesn't exist already
         else {
@@ -350,10 +356,16 @@ function run_tests($html_doc, $table) {
                 // if an .in file already exists forward it into the interpret input
                 if ($in = preg_grep("/" . str_replace(".src", ".in", $src[count($src) - 1]) . "/", $in_files)) {
                     $in = array_values($in);
+                    if (($key = array_search($in[0], $in_files)) !== false) {
+                        unset($in_files[$key]);
+                    }
                 }
                 // if a .txt file already exists forward the interpret output into it
                 if ($txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
                     $txt = array_values($txt);
+                    if (($key = array_search($txt[0], $txt_files)) !== false) {
+                        unset($txt_files[$key]);
+                    }
                 }
                 exec('python3 ' . $int_file . ' --source=' . $xml[0] . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
             }
@@ -363,10 +375,16 @@ function run_tests($html_doc, $table) {
             // if an .in file already exists forward it into the interpret input
             if ($in = preg_grep("/" . str_replace(".src", ".in", $src[count($src) - 1]) . "/", $in_files)) {
                 $in = array_values($in);
+                if (($key = array_search($in[0], $in_files)) !== false) {
+                    unset($in_files[$key]);
+                }
             }
             // if a .txt file already exists forward the interpret output into it
             if ($txt = preg_grep("/" . str_replace(".src", ".txt", $src[count($src) - 1]) . "/", $txt_files)) {
                 $txt = array_values($txt);
+                if (($key = array_search($txt[0], $txt_files)) !== false) {
+                    unset($txt_files[$key]);
+                }
             }
             exec('python3 ' . $int_file . ' --source=' . $file . ' --input=' . $in[0] . ' > ' . $txt[0] . ' 2> /dev/null', $int_output, $return_code_int);
         }
