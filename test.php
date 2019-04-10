@@ -25,6 +25,9 @@ $html_doc = new DOMDocument();
 $html_doc->preserveWhiteSpace = false;
 $html_doc->formatOutput = true;
 
+/**
+ * Function checks the script input arguments and stores the necessary information
+ */
 function parse_arguments() {
     global $tests_dir, $recursive, $parse_file, $int_file, $parse_only, $int_only;
 
@@ -104,49 +107,37 @@ function parse_arguments() {
     }
 }
 
-function get_files($format) {
-    global $tests_dir, $recursive;
+function get_files($path) {
+    global $recursive, $src_files, $rc_files, $in_files, $out_files;
 
-    // creating a temporary array
-    $array = array();
+    $dir_content = scandir($path);
 
-    // if the directory of the test files is specified
-    if ($tests_dir != null) {
-        // if recursivness is disabled
-        if ($recursive == false) {
-            $array = glob($tests_dir . "/*." . $format);
+    foreach ($dir_content as $file) {
+        // ingoring the . and .. folders
+        if ($file === "." || $file === "..") {
+            continue;
         }
-        // if recursivness is enabled
-        else {
-            $search = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tests_dir));
-
-            foreach ($search as $path) {
-                $filename = explode("/", $path);
-                if (preg_match($format, $filename [sizeof($filename ) - 1])) {
-                    if (!$path->isDir())
-                        $array[] = $path->getPathname();
-                }
-            }
+        // recursively traversing all the directories
+        elseif ($recursive && is_dir($path . "/" . $file)) {
+            get_files($path . "/" . $file);
         }
-    }
-    // if the directory of the test files is default
-    else {
-        // if recursivness is disabled
-        if ($recursive == false) {
-            $array = glob("*." . $format);
+        // if a .src file is found
+        elseif (preg_match("/^.*.src$/", $file)) {
+            array_push($src_files, $path . "/" . $file);
         }
-        // if recursivness is enabled
-        else {
-            foreach (glob("*." . $format) as $file) {
-                array_push($array, $file);
-            }
-            foreach (glob("*/*." . $format) as $file) {
-                array_push($array, $file);
-            }
+        // if a .in file is found
+        elseif (preg_match("/^.*.in$/", $file)) {
+            array_push($in_files, $path . "/" . $file);
+        }
+        // if a .out file is found
+        elseif (preg_match("/^.*.out$/", $file)) {
+            array_push($out_files, $path . "/" . $file);
+        }
+        // if a .rc file is found
+        elseif (preg_match("/^.*.rc$/", $file)) {
+            array_push($rc_files, $path . "/" . $file);
         }
     }
-
-    return $array;
 }
 
 function run_tests($html_doc, $table) {
@@ -433,12 +424,18 @@ function run_tests($html_doc, $table) {
 // function to deal with the input arguments
 parse_arguments();
 
+// checking if the interpret file exists
+if (!file_exists($int_file)) {
+    exit(11);
+}
+
+// checking if the parser file exists
+if (!file_exists($parse_file)) {
+    exit(11);
+}
+
 // function to fill the arrays with specific files for testing
-$src_files = get_files("(\.src)");
-$rc_files = get_files("(\.rc)");
-$out_files = get_files("(\.out)");
-$in_files = get_files("(\.in)");
-$xml_files = get_files("(\.xml)");
+get_files($tests_dir);
 
 // create the head of the html document
 $head = $html_doc->createElement('head');
