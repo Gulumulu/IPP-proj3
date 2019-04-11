@@ -19,6 +19,7 @@ $in_files = array();
 $out_files = array();
 $xml_files = array();
 $txt_files = array();
+$created_files = array();
 
 // create a new html document for test.php output
 $html_doc = new DOMDocument();
@@ -142,7 +143,7 @@ function get_files($path) {
 
 function run_tests($html_doc, $table) {
     global $parse_file, $int_file, $parse_only, $int_only;
-    global $src_files, $rc_files, $in_files, $out_files, $xml_files, $txt_files;
+    global $src_files, $rc_files, $in_files, $out_files, $xml_files, $txt_files, $created_files;
 
     $return_code_parser = null;
     $return_code_int = null;
@@ -270,6 +271,7 @@ function run_tests($html_doc, $table) {
             $filename = str_replace("src", "rc", $file);
             file_put_contents($filename, "0");
             $rc_content = "0";
+            array_push($created_files, $filename);
         }
 
         // create a table cell with the expected value got from the .rc files
@@ -290,6 +292,7 @@ function run_tests($html_doc, $table) {
             else {
                 exec('php ' . $parse_file . ' parse.php < ' . $file . " > " . str_replace(".src", ".xml", $file) . " 2> /dev/null", $parse_output, $return_code_parser);
                 array_push($xml_files, str_replace(".src", ".xml", $file));
+                array_push($created_files, str_replace(".src", ".xml", $file));
             }
 
             // if the return code of parser and the value in the .rc file match
@@ -315,6 +318,7 @@ function run_tests($html_doc, $table) {
             $filename = str_replace("src", "in", $file);
             file_put_contents($filename, "");
             array_push($in_files, $filename, "");
+            array_push($created_files, $filename);
         }
 
         // if the corresponding .out file exists load the value from it
@@ -327,9 +331,10 @@ function run_tests($html_doc, $table) {
         }
         // create .out file for the corresponding .src file if it doesn't exist already
         else {
-            $filename = str_replace("src", "out", $file);
+            $filename = str_replace(".src", ".out", $file);
             file_put_contents($filename, "");
-            array_push($in_files, $filename, "");
+            array_push($out_files, $filename, "");
+            array_push($created_files, $filename);
         }
 
         // create .txt file for the corresponding .src file if it doesn't exist already
@@ -337,6 +342,7 @@ function run_tests($html_doc, $table) {
             $filename = str_replace(".src", ".txt", $file);
             file_put_contents($filename, "");
             array_push($txt_files, $filename, "");
+            array_push($created_files, $filename);
         }
 
         // if both the interpret and the parser should be called use .xml files for the interpret
@@ -487,6 +493,10 @@ run_tests($html_doc, $table);
 $table->appendChild($html_docAttribute);
 $body->appendChild($table);
 $html_doc->appendChild($body);
+
+foreach ($created_files as $del) {
+    unlink($del);
+}
 
 // print the html document out
 print $html_doc->saveHTML();
